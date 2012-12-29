@@ -33,6 +33,16 @@ public class FileUtils extends org.codehaus.plexus.util.FileUtils {
         // hide constructor
     }
 
+    public static String resolveDirectory( String filePath ) {
+
+        if ( filePath.startsWith( "~" ) ) {
+            String userHome = System.getProperty( "user.home" );
+            return userHome + filePath.substring( 1 );
+        }
+
+        return filePath;
+    }
+
     public static File createTempFile() throws IOException {
 
         File file = File.createTempFile( "s3j-", ".xml" );

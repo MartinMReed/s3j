@@ -65,6 +65,7 @@ public final class ConfigUtil {
         if ( filePath == null || filePath.length() == 0 ) {
             return null;
         }
+        filePath = FileUtils.resolveDirectory( filePath );
         File file = new File( filePath );
         if ( !file.exists() ) {
             throw new FileNotFoundException( filePath );
@@ -75,13 +76,7 @@ public final class ConfigUtil {
     public static String getDirectory( Resource resource ) {
 
         String directory = resource.getDirectory();
-
-        if ( directory.startsWith( "~" ) ) {
-            String userHome = System.getProperty( "user.home" );
-            return userHome + directory.substring( 1 );
-        }
-
-        return directory;
+        return FileUtils.resolveDirectory( directory );
     }
 
     public static List<Resource> getResources( Configuration configuration ) {

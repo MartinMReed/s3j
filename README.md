@@ -7,7 +7,7 @@
 		<bucket>bucket</bucket>
 		<accessKey>accessKey</accessKey>
 		<accessKeyId>accessKeyId</accessKeyId>
-		<privateKey>/Users/username/.ssh/id_rsa</privateKey>
+		<privateKey>~/.ssh/id_rsa</privateKey>
 		<resources>
 			<resource>
 				<directory>~/Desktop</directory>
