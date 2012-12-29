@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xjc="http://java.sun.com/xml/ns/jaxb/xjc" xmlns:jxb="http://java.sun.com/xml/ns/jaxb" elementFormDefault="qualified" jxb:version="1.0" jxb:extensionBindingPrefixes="xjc" targetNamespace="http://hardisonbrewing.org/schemas/model" xmlns="http://hardisonbrewing.org/schemas/model">
+
+	<xs:element name="config" type="Configuration" />
+
+	<xs:complexType name="Configuration">
+		<xs:sequence>
+			<xs:element name="bucket" type="xs:string" minOccurs="1" maxOccurs="1" />
+			<xs:element name="accessKey" type="xs:string" minOccurs="1" maxOccurs="1" />
+			<xs:element name="accessKeyId" type="xs:string" minOccurs="1" maxOccurs="1" />
+			<xs:element name="privateKey" type="xs:string" minOccurs="1" maxOccurs="1" />
+			<xs:element name="resources" minOccurs="1" maxOccurs="1">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="resource" type="Resource" minOccurs="1" maxOccurs="unbounded" />
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+
+	<xs:complexType name="Resource">
+		<xs:sequence>
+			<xs:element name="directory" type="xs:string" minOccurs="1" maxOccurs="1" />
+			<xs:element name="includes" minOccurs="0" maxOccurs="1">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="include" type="xs:string" minOccurs="1" maxOccurs="unbounded" />
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="excludes" minOccurs="0" maxOccurs="1">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="exclude" type="xs:string" minOccurs="1" maxOccurs="unbounded" />
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+
+</xs:schema>
