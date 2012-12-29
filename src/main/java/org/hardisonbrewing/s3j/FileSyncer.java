@@ -230,12 +230,12 @@ public class FileSyncer {
 
         byte[] encryptedKey = RsaUtil.encrypt( privateKey, rawKey );
 
-        Properties properties = new Properties();
+        DataProperties properties = new DataProperties();
         properties.put( PROP_ALGORITHM, AesUtil.ALGORITHM );
-        properties.put( PROP_DECRYPTED_LENGTH, Long.toString( decryptedLength ) );
-        properties.put( PROP_ENCRYPTED_LENGTH, Long.toString( encryptedLength ) );
-        properties.put( PROP_KEY, Base64.encodeBase64String( encryptedKey ) );
-        properties.put( PROP_LAST_MODIFIED, Long.toString( file.lastModified() ) );
+        properties.put( PROP_DECRYPTED_LENGTH, decryptedLength );
+        properties.put( PROP_ENCRYPTED_LENGTH, encryptedLength );
+        properties.put( PROP_KEY, encryptedKey );
+        properties.put( PROP_LAST_MODIFIED, file.lastModified() );
         uploadProperties( path, properties );
     }
 

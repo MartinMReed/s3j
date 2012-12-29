@@ -34,6 +34,11 @@ public class DataProperties extends Properties {
         return Base64.decodeBase64( value );
     }
 
+    public void put( String key, byte[] value ) {
+
+        put( key, Base64.encodeBase64String( value ) );
+    }
+
     public long getLongProperty( String key ) {
 
         String value = getProperty( key );
@@ -43,12 +48,8 @@ public class DataProperties extends Properties {
         return Long.parseLong( value );
     }
 
-    public boolean getBooleanProperty( String key ) {
+    public void put( String key, long value ) {
 
-        String value = getProperty( key );
-        if ( value == null || value.length() == 0 ) {
-            return false;
-        }
-        return Boolean.parseBoolean( value );
+        put( key, Long.toString( value ) );
     }
 }
