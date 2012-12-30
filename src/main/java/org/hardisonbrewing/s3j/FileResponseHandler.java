@@ -64,6 +64,8 @@ public class FileResponseHandler implements ResponseHandler<File> {
 
             inputStream = entity.getContent();
 
+            inputStream = new ProgressInputStream( inputStream, contentLength );
+
             // put this before the cipher so we get the encrypted length
             countingInputStream = new CountingInputStream( inputStream );
             inputStream = countingInputStream;

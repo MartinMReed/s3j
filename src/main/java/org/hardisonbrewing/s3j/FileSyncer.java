@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012 Martin M Reed
+ * Copyright (c) 2012-2013 Martin M Reed
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -22,6 +22,7 @@ import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.URI;
 import java.security.DigestInputStream;
 import java.security.InvalidKeyException;
 import java.security.MessageDigest;
@@ -29,6 +30,9 @@ import java.security.NoSuchAlgorithmException;
 import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.LinkedList;
+import java.util.List;
 import java.util.Properties;
 
 import javax.crypto.Cipher;
@@ -36,6 +40,7 @@ import javax.crypto.CipherInputStream;
 import javax.crypto.Mac;
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import javax.xml.datatype.XMLGregorianCalendar;
 
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.codec.binary.Hex;
@@ -53,15 +58,21 @@ import org.apache.http.protocol.HTTP;
 import org.apache.http.util.EntityUtils;
 import org.codehaus.plexus.util.IOUtil;
 
+import com.amazonaws.s3.doc._2006_03_01.ListBucketResult;
+import com.amazonaws.s3.doc._2006_03_01.ListEntry;
+
 public class FileSyncer {
 
-    private static final String PROP_LAST_MODIFIED = "lastModified";
+    private static final String PROP_ORIG_FILE_PATH = "original.file.path";
+    private static final String PROP_LAST_MODIFIED = "last.modified";
     private static final String PROP_KEY = "key";
-    private static final String PROP_ENCRYPTED_LENGTH = "encryptedLength";
-    private static final String PROP_DECRYPTED_LENGTH = "decryptedLength";
+    private static final String PROP_ENCRYPTED_LENGTH = "encrypted.length";
+    private static final String PROP_DECRYPTED_LENGTH = "decrypted.length";
     private static final String PROP_ALGORITHM = "algorithm";
 
-    private static final String DOT_S3J = ".s3j";
+    /*package*/static final String DOT_S3J = ".s3j";
+
+    private static final int MAX_KEYS = 25;
 
     private static final DateFormat amzDateFormat;
 
@@ -88,7 +99,73 @@ public class FileSyncer {
     }
 
     // http://docs.amazonwebservices.com/AmazonS3/latest/API/APIRest.html
-    public File get( String path ) throws Exception {
+    public List<ListBucketObject> list( String prefix ) throws Exception {
+
+        List<ListBucketObject> contents = new LinkedList<ListBucketObject>();
+        while (list( contents, prefix )) {
+            // loop
+        }
+        for (ListBucketObject object : contents) {
+            System.out.println( object.key );
+        }
+        return contents;
+    }
+
+    // http://docs.amazonwebservices.com/AmazonS3/latest/API/APIRest.html
+    private boolean list( List<ListBucketObject> contents, String prefix ) throws Exception {
+
+        String url = getUrl( "/" );
+
+        StringBuffer params = new StringBuffer();
+        params.append( "?max-keys=" );
+        params.append( MAX_KEYS );
+        if ( !contents.isEmpty() ) {
+            ListBucketObject last = contents.get( contents.size() - 1 );
+            params.append( "&marker=" );
+            params.append( last.key );
+        }
+        if ( prefix != null && prefix.length() > 0 ) {
+            params.append( "&prefix=" );
+            params.append( prefix );
+        }
+        url += params.toString();
+
+        HttpRequestBase httpRequest = new HttpGet( url );
+        addHeaders( httpRequest, null );
+
+        System.out.println( "Downloading: " + url );
+        HttpUtil.printHeaders( httpRequest );
+
+        JaxbResponseHandler<ListBucketResult> jaxbResponseHandler;
+        jaxbResponseHandler = new JaxbResponseHandler<ListBucketResult>( ListBucketResult.class );
+        ListBucketResult listBucketResult = httpClient.execute( httpRequest, jaxbResponseHandler );
+
+        List<ListEntry> _contents = listBucketResult.getContents();
+
+        if ( _contents != null && !_contents.isEmpty() ) {
+            for (ListEntry listEntry : _contents) {
+                ListBucketObject object = new ListBucketObject();
+                object.key = listEntry.getKey();
+                object.etag = listEntry.getETag();
+                object.lastModified = getLastModified( listEntry );
+                object.size = listEntry.getSize();
+                contents.add( object );
+            }
+        }
+
+        return listBucketResult.isIsTruncated();
+    }
+
+    private long getLastModified( ListEntry listEntry ) {
+
+        XMLGregorianCalendar xmlGregorianCalendar = listEntry.getLastModified();
+        GregorianCalendar gregorianCalendar = xmlGregorianCalendar.toGregorianCalendar();
+        Date date = gregorianCalendar.getTime();
+        return date.getTime();
+    }
+
+    // http://docs.amazonwebservices.com/AmazonS3/latest/API/APIRest.html
+    public GetObjectResult get( String path ) throws Exception {
 
         String url = getUrl( path );
         HttpRequestBase httpRequest = new HttpGet( url );
@@ -98,11 +175,16 @@ public class FileSyncer {
         HttpUtil.printHeaders( httpRequest );
 
         FileResponseHandler fileResponseHandler = new FileResponseHandler();
-        return httpClient.execute( httpRequest, fileResponseHandler );
+        File file = httpClient.execute( httpRequest, fileResponseHandler );
+
+        GetObjectResult response = new GetObjectResult();
+        response.file = file;
+        response.bucketPath = path;
+        return response;
     }
 
     // http://docs.amazonwebservices.com/AmazonS3/latest/API/APIRest.html
-    public File get( String path, boolean decrypt ) throws Exception {
+    public GetObjectResult get( String path, boolean decrypt ) throws Exception {
 
         if ( !decrypt || privateKey == null ) {
             return get( path );
@@ -114,6 +196,7 @@ public class FileSyncer {
         long encryptedLength = properties.getLongProperty( PROP_ENCRYPTED_LENGTH );
         byte[] encryptedKey = properties.getBinaryProperty( PROP_KEY );
         long lastModified = properties.getLongProperty( PROP_LAST_MODIFIED );
+        String originalFilePath = properties.getProperty( PROP_ORIG_FILE_PATH );
 
         System.out.println( "  S3J Properties" );
         PropertiesUtil.printProperties( properties );
@@ -149,19 +232,24 @@ public class FileSyncer {
             throw new IOException( stringBuffer.toString() );
         }
 
-        return file;
+        GetObjectResult response = new GetObjectResult();
+        response.file = file;
+        response.properties = properties;
+        response.bucketPath = path;
+        response.originalPath = originalFilePath;
+        return response;
     }
 
     private DataProperties downloadProperties( String path ) throws Exception {
 
-        path = getPropPath( path );
-        File file = get( path );
+        path = getPropertiesPath( path );
+        GetObjectResult response = get( path );
 
         InputStream inputStream = null;
 
         try {
 
-            inputStream = new FileInputStream( file );
+            inputStream = new FileInputStream( response.file );
 
             DataProperties properties = new DataProperties();
             properties.load( inputStream );
@@ -185,7 +273,7 @@ public class FileSyncer {
         return httpClient.execute( httpRequest );
     }
 
-    public void put( File file ) throws Exception {
+    public PutObjectResult put( File file ) throws Exception {
 
         String path = getBucketPath( file );
         long length = file.length();
@@ -199,13 +287,17 @@ public class FileSyncer {
         finally {
             IOUtil.close( inputStream );
         }
+
+        PutObjectResult response = new PutObjectResult();
+        response.file = file;
+        response.bucketPath = path;
+        return response;
     }
 
-    public void put( File file, boolean encrypted ) throws Exception {
+    public PutObjectResult put( File file, boolean encrypted ) throws Exception {
 
         if ( !encrypted || privateKey == null ) {
-            put( file );
-            return;
+            return put( file );
         }
 
         long decryptedLength = file.length();
@@ -235,13 +327,20 @@ public class FileSyncer {
         properties.put( PROP_DECRYPTED_LENGTH, decryptedLength );
         properties.put( PROP_ENCRYPTED_LENGTH, encryptedLength );
         properties.put( PROP_KEY, encryptedKey );
+        properties.put( PROP_ORIG_FILE_PATH, file.getAbsolutePath() );
         properties.put( PROP_LAST_MODIFIED, file.lastModified() );
         uploadProperties( path, properties );
+
+        PutObjectResult response = new PutObjectResult();
+        response.file = file;
+        response.properties = properties;
+        response.bucketPath = path;
+        return response;
     }
 
     private void uploadProperties( String path, Properties properties ) throws Exception {
 
-        path = getPropPath( path );
+        path = getPropertiesPath( path );
 
         ByteArrayOutputStream outputStream = null;
         byte[] bytes;
@@ -266,7 +365,7 @@ public class FileSyncer {
         }
     }
 
-    private String getPropPath( String path ) {
+    private String getPropertiesPath( String path ) {
 
         StringBuffer stringBuffer = new StringBuffer();
         stringBuffer.append( DOT_S3J );
@@ -298,6 +397,7 @@ public class FileSyncer {
         HttpEntity httpEntity = null;
 
         try {
+            inputStream = new ProgressInputStream( inputStream, length );
             inputStream = new DigestInputStream( inputStream, md5Digest );
             httpRequest.setEntity( new InputStreamEntity( inputStream, length ) );
             httpResponse = httpClient.execute( httpRequest );
@@ -338,7 +438,10 @@ public class FileSyncer {
             stringBuffer.insert( 0, file.getName() );
             file = file.getParentFile();
         }
-        return stringBuffer.toString();
+
+        String path = stringBuffer.toString();
+        path = path.replace( ' ', '_' );
+        return path;
     }
 
     private String getHeaderValue( HttpResponse httpResponse, String name ) {
@@ -354,9 +457,13 @@ public class FileSyncer {
         return value;
     }
 
-    private String getUrl( String path ) {
+    private String getUrl( String path ) throws Exception {
 
-        return "http://" + bucket + ".s3.amazonaws.com/" + path;
+        if ( path != null && path.length() > 0 ) {
+            path = "/" + path;
+        }
+        URI uri = new URI( "http", bucket + ".s3.amazonaws.com", path, null );
+        return uri.toString();
     }
 
     private void addHeaders( HttpRequestBase httpRequest, String path ) throws Exception {
@@ -366,7 +473,10 @@ public class FileSyncer {
         httpRequest.addHeader( "Host", bucket + ".s3.amazonaws.com" );
         httpRequest.addHeader( "x-amz-date", amzDateFormat( expires ) );
 
-        String resource = "/" + bucket + "/" + path;
+        String resource = "/" + bucket + "/";
+        if ( path != null && path.length() > 0 ) {
+            resource += path;
+        }
         String signature = signature( accessKey, expires, resource, httpRequest );
         httpRequest.addHeader( "Authorization", "AWS " + accessKeyId + ":" + signature );
 
@@ -442,5 +552,28 @@ public class FileSyncer {
         mac.init( secretKeySpec );
         mac.update( data );
         return mac.doFinal();
+    }
+
+    public static final class PutObjectResult {
+
+        public File file;
+        public Properties properties;
+        public String bucketPath;
+    }
+
+    public static final class GetObjectResult {
+
+        public File file;
+        public Properties properties;
+        public String bucketPath;
+        public String originalPath;
+    }
+
+    public static final class ListBucketObject {
+
+        public String key;
+        public String etag;
+        public long size;
+        public long lastModified;
     }
 }

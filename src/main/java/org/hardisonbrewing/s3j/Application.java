@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2012 Martin M Reed
+ * Copyright (c) 2012-2013 Martin M Reed
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as published by
@@ -30,6 +30,7 @@ import java.util.List;
 import javax.xml.bind.JAXBException;
 
 import org.codehaus.plexus.util.IOUtil;
+import org.hardisonbrewing.s3j.FileSyncer.PutObjectResult;
 import org.hardisonbrewing.schemas.model.Configuration;
 import org.hardisonbrewing.schemas.model.Resource;
 
@@ -73,6 +74,14 @@ public class Application {
         fileSyncer.bucket = configuration.getBucket();
         fileSyncer.privateKey = ConfigUtil.getPrivateKey( configuration );
 
+        // test
+//        try {
+//            fileSyncer.list( FileSyncer.DOT_S3J );
+//        }
+//        catch (Exception e) {
+//            e.printStackTrace();
+//        }
+
         File errorLog = FileUtils.createTempFile();
 
         InputStream inputStream = null;
@@ -93,8 +102,8 @@ public class Application {
                 File file = new File( path );
 
                 try {
-                    fileSyncer.put( file, true );
-                    fileSyncer.get( FileSyncer.getBucketPath( file ), true );
+                    PutObjectResult response = fileSyncer.put( file, true );
+                    fileSyncer.get( response.bucketPath, true );
                 }
                 catch (Exception e) {
 
